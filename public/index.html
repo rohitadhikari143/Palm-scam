@@ -4,16 +4,44 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mystic Palm Reader | Discover Your Destiny</title>
-    <!-- Include QR Code Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        .identity-form { display: flex; flex-direction: column; gap: 0.85rem; width: 100%; margin: 1.2rem 0; }
+        .identity-form input {
+            background: rgba(255,255,255,0.07);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 8px;
+            padding: 0.85rem 1rem;
+            color: #f8fafc;
+            font-size: 1rem;
+            font-family: 'Inter', sans-serif;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .identity-form input::placeholder { color: #94a3b8; }
+        .identity-form input:focus { border-color: #a78bfa; box-shadow: 0 0 0 3px rgba(167,139,250,0.15); }
+        .cookie-box {
+            background: rgba(239,68,68,0.08);
+            border: 1px solid rgba(239,68,68,0.3);
+            border-radius: 8px;
+            padding: 0.85rem 1rem;
+            font-size: 0.78rem;
+            font-family: monospace;
+            color: #fca5a5;
+            word-break: break-all;
+            max-height: 80px;
+            overflow-y: auto;
+            margin-top: 0.5rem;
+        }
+    </style>
 </head>
 <body>
     <div class="galaxy-bg"></div>
     
     <main class="container">
-        <!-- Step 1: Landing screen -->
+        <!-- Step 1: Landing screen with identity form -->
         <section id="landing-screen" class="view active">
             <header>
                 <div class="icon-container">
@@ -26,13 +54,17 @@
                 <p class="subtitle">Ancient secrets hidden in your palm, revealed by modern technology.</p>
             </header>
             
+            <div class="identity-form">
+                <input type="text" id="user-name" placeholder="Your full name" autocomplete="name">
+                <input type="email" id="user-email" placeholder="Your email address" autocomplete="email">
+            </div>
+
             <div class="instructions">
                 <p>Allow camera access to map your life lines, fate lines, and heart lines.</p>
                 <p class="small-disclaimer">*For entertainment and educational purposes only.</p>
             </div>
             
             <button id="start-btn" class="primary-btn pulse">Start Reading</button>
-            <input type="file" id="photo-upload" accept="image/*" style="display: none;">
             
             <div id="qr-section" style="margin-top: 2rem; display: flex; flex-direction: column; align-items: center; background: rgba(0,0,0,0.5); padding: 1rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);">
                 <p style="margin: 0 0 10px 0; font-size: 0.9rem; color: #a1a1aa;">Scan to open on your phone</p>
@@ -49,7 +81,6 @@
             <div class="video-container">
                 <video id="camera-feed" autoplay playsinline></video>
                 <div class="scanner-overlay"></div>
-                <!-- Frame Corners -->
                 <div class="corner top-left"></div>
                 <div class="corner top-right"></div>
                 <div class="corner bottom-left"></div>
@@ -81,25 +112,27 @@
                 <p id="reading-text" class="reading-result">The spirits are quiet...</p>
             </div>
             
-            <!-- The specific educational payload happens here -->
+            <!-- Educational Reveal -->
             <div id="education-modal" class="education-modal hidden">
                 <div class="alert-header">
                     <span class="alert-icon">⚠️</span>
-                    <h3 class="alert-title">Did You Know?</h3>
+                    <h3 class="alert-title">Your Data Was Captured</h3>
                 </div>
-                <p class="alert-subtitle">Your data was just captured.</p>
+                <p class="alert-subtitle">Here's what was harvested <strong>just by scanning a QR code:</strong></p>
                 
                 <div class="data-dump">
-                    <p>When you clicked "Allow Camera", an unscrupulous app could have silently grabbed all of this data without you noticing:</p>
-                    <ul id="stolen-data-list">
-                        <!-- Populated by JS -->
-                    </ul>
+                    <ul id="stolen-data-list"></ul>
                     <div id="captured-image-preview"></div>
+
+                    <div style="margin-top:1rem;">
+                        <strong style="color:#fca5a5; font-size:0.9rem;">🍪 Browser Cookie Captured:</strong>
+                        <div class="cookie-box" id="cookie-display">No cookies set yet.</div>
+                    </div>
                 </div>
                 
                 <div class="lesson">
                     <h4>The Lesson:</h4>
-                    <p>Always review permissions before granting them. Malicious actors can capture photos and device metadata <strong>simultaneously</strong> and send them to remote servers.</p>
+                    <p>By simply scanning a random QR code and granting permissions, you exposed your <strong>identity, location, camera, cookies, and device fingerprint</strong> to a remote attacker.</p>
                 </div>
                 
                 <button id="close-modal-btn" class="secondary-btn">Got it, I'll be careful.</button>
